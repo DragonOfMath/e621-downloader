@@ -1,0 +1,10 @@
+{
+  "name": "e621-downloader",
+  "description": "Node.js bulk-file downloader for e621.net",
+  "main": "src/index.js",
+  "version": "1.0",
+  "dependencies": {
+    "bluebird": "^3.5.1",
+    "request": "^2.83.0"
+  }
+}
