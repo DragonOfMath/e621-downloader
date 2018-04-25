@@ -41,10 +41,6 @@ Array.prototype.unique = function () {
 	}, []);
 };
 
-const POST_REGEX   = /https?:\/\/e621\.net\/post\/show\/(\d+)/;
-const DIRECT_REGEX = /e621.net\/.*\/([0-9a-f]{32})/;
-const HASH_REGEX   = /[0-9a-f]{32}/;
-
 class E621 {
 	static search(tags = [], page = 1) {
 		return RequestPromise.fetch('https://e621.net/post/index.json',{parameters:{tags,limit:100,page}}).then(r=>typeof(r)==='string'?JSON.parse(r):r);
@@ -71,8 +67,8 @@ class E621 {
 	static fetch(todo = [], blacklist = []) {
 		console.log('\nFetching posts...');
 		return todo.mapAsync((item, idx) => {
-			if (DIRECT_REGEX.test(item)) {
-				var hash = item.match(HASH_REGEX);
+			if (/e621.net\/.*\/([0-9a-f]{32})/.test(item)) {
+				var hash = item.match(/[0-9a-f]{32}/);
 				console.log(`[${idx+1}/${todo.length}] Searching for post with MD5: ${hash}`);
 				
 				return this.searchByMD5(hash)
@@ -84,8 +80,8 @@ class E621 {
 					}
 					return post;
 				});
-			} else if (POST_REGEX.test(item)) {
-				var id = item.match(POST_REGEX)[1];
+			} else if (/e621\.net\/post\/show\/(\d+)/.test(item)) {
+				var id = item.match(/show\/(\d+)/)[1];
 				console.log(`[${idx+1}/${todo.length}] Searching for post with ID: ${id}`);
 				
 				return this.searchByID(id)
@@ -145,17 +141,17 @@ class E621 {
 			total += p.file_size;
 		}
 		
-		console.log(`\nPreparing to download... (Estimated Total Size: ${Format.bytes(total)})`);
+		console.log(`\nPreparing to download...`);
 		return posts.forEachAsync(function (post, p) {
 			var filename = post.file_url.split('/').pop();
 			var file = directory + '/' + filename;
+			progress += post.file_size;
+			var stuff = `[${p+1}/${posts.length} | ${Format.bytes(progress)}/${Format.bytes(total)} | ${Format.percent(progress/total)} | #${post.id}]`;
 			if (FilePromise.existsSync(file)) {
+				console.log(stuff, `Skipping ${filename} (already exists)`);
 				skipped++;
-				progress += post.file_size;
-				console.log(`[${p+1}/${posts.length} | ${Format.percent(progress/total)}] Skipping #${post.id} because ${filename} already exists.`);
 			} else {
-				console.log(`[${p+1}/${posts.length} | ${Format.percent(progress/total)}] Downloading #${post.id} as ${filename} (Size: ${Format.bytes(post.file_size)})`);
-				progress += post.file_size;
+				console.log(stuff, `Downloading ${filename} (${Format.bytes(post.file_size)})`);
 				return RequestPromise.download(post.file_url, file)
 				.then(() => {
 					successful++;

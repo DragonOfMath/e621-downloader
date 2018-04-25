@@ -6,14 +6,14 @@ Node.js bulk-file downloader client for e621.net
 npm install e621-downloader --save
 ```
 
-# Run
+# Usage
 Require the downloader module and call its fetchAndDownload() method.
 ```js
-static fetchAndDownload(todo, blacklist, directory)
+static fetchAndDownload(todo, [blacklist], [directory])
 ```
-`todo` is an array of tags and links you can use to locate and retrieve files for downloading.
-`blacklist` is an array of tags to filter content with, as sometimes that is necessary.
-`directory` is the path to save the files to. If left out, it will download to a local `/downloads/` folder.
+* `todo` is an array of tags and links you can use to locate and retrieve files for downloading.
+* `blacklist` is an array of tags to filter content with, as sometimes that is necessary.
+* `directory` is the path to save the files to. If left out, it will download to a local `/downloads/` folder.
 
 When ran, it will first fetch all the file metadata, including their IDs, hashes, file sizes, etc. Depending on how many posts it must retrieve, the process may take from less than a minute to half an hour.
 
