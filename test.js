@@ -1,4 +1,4 @@
-require('./src/index.js').fetchAndDownload(
+require('./index.js').fetchAndDownload(
 	// tags and links for things you want to fetch
 	[
 		'spyro male feral solo rating:safe',

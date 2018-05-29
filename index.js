@@ -1,45 +1,11 @@
-const FilePromise    = require('./FilePromise');
-const RequestPromise = require('./RequestPromise');
-const Format         = require('./formatting');
+const FilePromise    = require('./utils/FilePromise');
+const RequestPromise = require('./utils/RequestPromise');
+const FileExplorer   = require('./utils/FileExplorer');
+const Format         = require('./utils/formatting');
+const Array          = require('./utils/Array');
+const Logger         = require('./utils/Logger');
 
-// Array utils
-Array.prototype.forEachAsync = function (callback) {
-	var iterable = this;
-	function _next(i) {
-		return Promise.resolve(callback(iterable[i], i))
-		.then(() => {
-			if (i < iterable.length - 1) {
-				return _next(i+1);
-			}
-		});
-	}
-	return _next(0);
-};
-Array.prototype.mapAsync = function (callback) {
-	var iterable = this;
-	var mapped = [];
-	function _next(i) {
-		return Promise.resolve(callback(iterable[i], i))
-		.then(value => {
-			if (typeof(value) !== 'undefined') mapped.push(value);
-			if (i < iterable.length - 1) {
-				return _next(i+1);
-			} else {
-				return mapped;
-			}
-		});
-	}
-	return _next(0);
-};
-Array.prototype.flatten = function () {
-	return [].concat(...this.map(x => x instanceof Array ? x.flatten() : [x]));
-};
-Array.prototype.unique = function () {
-	return this.reduce((a,x) => {
-		if (!a.includes(x)) a.push(x);
-		return a;
-	}, []);
-};
+var logger = new Logger('e621 Downloader');
 
 class E621 {
 	static search(tags = [], page = 1) {
@@ -57,7 +23,7 @@ class E621 {
 		function _search(page) {
 			return E621.search(tags, page)
 			.then(posts => {
-				console.log(`[Page ${page}] Got ${posts.length} posts from server.`)
+				logger.log(`[Page ${page}] Got ${posts.length} posts from server.`)
 				if (posts.length == 0) return allPosts;
 				allPosts = allPosts.concat(posts);
 				return _search(page + 1);
@@ -65,63 +31,69 @@ class E621 {
 		}
 	}
 	static fetch(todo = [], blacklist = []) {
-		console.log('\nFetching posts...');
+		logger.log('\nFetching posts...');
 		return todo.mapAsync((item, idx) => {
 			if (/e621.net\/.*\/([0-9a-f]{32})/.test(item)) {
 				var hash = item.match(/[0-9a-f]{32}/);
-				console.log(`[${idx+1}/${todo.length}] Searching for post with MD5: ${hash}`);
+				logger.log(`[${idx+1}/${todo.length}] Searching for post with MD5: ${hash}`);
 				
 				return this.searchByMD5(hash)
 				.then(post => {
+					logger.indent();
 					if (post) {
-						console.log('Post found:',post.id);
+						logger.green('Post found:',post.id);
 					} else {
-						console.log('Post not found.');
+						logger.red('Post not found.');
 					}
+					logger.unindent();
 					return post;
 				});
 			} else if (/e621\.net\/post\/show\/(\d+)/.test(item)) {
 				var id = item.match(/show\/(\d+)/)[1];
-				console.log(`[${idx+1}/${todo.length}] Searching for post with ID: ${id}`);
+				logger.log(`[${idx+1}/${todo.length}] Searching for post with ID: ${id}`);
 				
 				return this.searchByID(id)
 				.then(post => {
+					logger.indent();
 					if (post) {
-						console.log('Post found:',post.id);
+						logger.green('Post found:',post.id);
 					} else {
-						console.log('Post not found.');
+						logger.red('Post not found.');
 					}
+					logger.unindent();
 					return post;
 				});
 			} else {
 				var tags = item.toLowerCase().split(' ');
-				console.log(`[${idx+1}/${todo.length}] Searching for all posts with tags: ${item}`);
+				logger.log(`[${idx+1}/${todo.length}] Searching for all posts with tags: ${item}`);
 				
 				return this.searchAll(tags)
 				.catch(e => {
-					console.error(e);
+					logger.error(e);
 					return [];
 				})
 				.then(_posts => {
+					logger.indent();
 					if (_posts.length > 0) {
 						var before = _posts.length;
 						_posts = _posts.filter(p => p.tags.split(' ').every(t => !blacklist.includes(t)));
 						var after = _posts.length;
-						console.log(`${before} posts found, ${before-after} blacklisted, ${after} kept.`);
+						logger.green(`${before} posts found, ${before-after} blacklisted, ${after} kept.`);
 					} else {
-						console.log('No posts found.');
+						logger.red('No posts found.');
 					}
+					logger.unindent();
 					return _posts;
 				});
 			}
 		})
 		.then(posts => {
 			posts = posts.flatten().unique().filter(p => p != null);
-			console.log('Fetched',posts.length,'posts total.');
+			logger.log('Fetched',posts.length,'posts total.');
 			return posts;
 		})
 		.catch(e => {
-			console.error(e);
+			logger.error(e);
 			return [];
 		});
 	}
@@ -129,7 +101,7 @@ class E621 {
 		directory = FilePromise.resolve(directory);
 		
 		if (!FilePromise.existsSync(directory)) {
-			console.log('Making output directory...');
+			logger.log('Making output directory "' + directory + '"');
 			FilePromise.makeDirSync(directory);
 		}
 		
@@ -141,32 +113,39 @@ class E621 {
 			total += p.file_size;
 		}
 		
-		console.log(`\nPreparing to download...`);
+		logger.log(`\nPreparing to download ${posts.length} files...`);
 		return posts.forEachAsync(function (post, p) {
 			var filename = post.file_url.split('/').pop();
 			var file = directory + '/' + filename;
 			progress += post.file_size;
 			var stuff = `[${p+1}/${posts.length} | ${Format.bytes(progress)}/${Format.bytes(total)} | ${Format.percent(progress/total)} | #${post.id}]`;
 			if (FilePromise.existsSync(file)) {
-				console.log(stuff, `Skipping ${filename} (already exists)`);
+				logger.yellow(stuff, `Skipping ${filename} (already exists)`);
 				skipped++;
 			} else {
-				console.log(stuff, `Downloading ${filename} (${Format.bytes(post.file_size)})`);
+				logger.green(stuff, `Downloading ${filename} (${Format.bytes(post.file_size)})`);
+				// TODO: show download progress somehow?
 				return RequestPromise.download(post.file_url, file)
 				.then(() => {
 					successful++;
 				})
 				.catch(e => {
 					failed++;
-					console.error(e);
+					logger.error(e);
 				});
 			}
 		})
 		.then(() => {
-			console.log(`\n---- RESULTS: ----\n${successful} successfully downloaded, ${skipped} skipped, ${failed} failed.`);
+			logger.ln();
+			logger.green( `Downloaded: ${successful}`);
+			logger.yellow(`Skipped:    ${skipped}`);
+			logger.red(   `Failed:     ${failed}`);
+			logger.log(   `Total:      ${posts.length} (${Format.bytes(total)})`);
+			
+			FileExplorer.goto(directory);
 		})
 		.catch(e => {
-			console.error(e);
+			logger.error(e);
 		});
 	}
 	static fetchAndDownload(todo, blacklist, directory) {
