@@ -5,14 +5,43 @@ const Format         = require('./utils/formatting');
 const Array          = require('./utils/Array');
 const Logger         = require('./utils/Logger');
 
+const E621_INDEX_URL = 'https://e621.net/post/index.json'; // params: tags, limit, page
+const E621_POST_URL  = 'https://e621.net/post/show.json'; // params: id
+const E621_POOL_URL  = 'https://e621.net/pool/show.json'; // params: id
+
+const POST_REGEX     = /https?:\/\/e621\.net\/post\/show\/(\d+)/;
+const POOL_REGEX     = /https?:\/\/e621\.net\/pool\/show\/(\d+)/;
+const DIRECT_REGEX   = /e621.net\/.*\/([0-9a-f]{32})/;
+const HASH_REGEX     = /[0-9a-f]{32}/;
+const ID_REGEX       = /show\/(\d+)/;
+
 var logger = new Logger('e621 Downloader');
 
 class E621 {
 	static search(tags = [], page = 1) {
-		return RequestPromise.fetch('https://e621.net/post/index.json',{parameters:{tags,limit:100,page}}).then(r=>typeof(r)==='string'?JSON.parse(r):r);
+		return RequestPromise.get(E621_INDEX_URL, {
+			parameters: {tags, limit: 100, page}
+		}).then(r => typeof(r)==='string' ? JSON.parse(r) : r);
 	}
-	static searchByID(id) {
-		return this.search([`id:${id}`]).then(posts => posts[0]);
+	static getPost(id) {
+		return RequestPromise.get(E621_POST_URL, {
+			parameters: {id}
+		});
+	}
+	static getPool(id) {
+		var poolPosts = [];
+		return _getPoolPage(1);
+		function _getPoolPage(page) {
+			return RequestPromise.get(E621_POOL_URL, {
+				parameters: {id, page}
+			})
+			.then(posts => {
+				logger.log(`[Page ${page}] Got ${posts.length} posts from server.`);
+				if (posts.length == 0) return poolPosts;
+				poolPosts = poolPosts.concat(posts);
+				return _getPoolpage(page + 1);
+			});
+		}
 	}
 	static searchByMD5(hash) {
 		return this.search([`md5:${hash}`]).then(posts => posts[0]);
@@ -33,8 +62,8 @@ class E621 {
 	static fetch(todo = [], blacklist = []) {
 		logger.log('\nFetching posts...');
 		return todo.mapAsync((item, idx) => {
-			if (/e621.net\/.*\/([0-9a-f]{32})/.test(item)) {
-				var hash = item.match(/[0-9a-f]{32}/);
+			if (DIRECT_REGEX.test(item)) {
+				var hash = item.match(HASH_REGEX);
 				logger.log(`[${idx+1}/${todo.length}] Searching for post with MD5: ${hash}`);
 				
 				return this.searchByMD5(hash)
@@ -48,11 +77,11 @@ class E621 {
 					logger.unindent();
 					return post;
 				});
-			} else if (/e621\.net\/post\/show\/(\d+)/.test(item)) {
-				var id = item.match(/show\/(\d+)/)[1];
-				logger.log(`[${idx+1}/${todo.length}] Searching for post with ID: ${id}`);
+			} else if (POST_REGEX.test(item)) {
+				var id = item.match(ID_REGEX)[1];
+				logger.log(`[${idx+1}/${todo.length}] Fetching single post: ${id}`);
 				
-				return this.searchByID(id)
+				return this.getPost(id)
 				.then(post => {
 					logger.indent();
 					if (post) {
@@ -63,9 +92,24 @@ class E621 {
 					logger.unindent();
 					return post;
 				});
+			} else if (POOL_REGEX) {
+				var id = item.match(ID_REGEX)[1];
+				logger.log(`[${idx+1}/${todo.length}] Fetching posts in pool: ${id}`);
+				
+				return this.getPool(id)
+				.then(_posts => {
+					logger.indent();
+					if (_posts.length) {
+						logger.green(`${_posts.length} posts retrieved.`);
+					} else {
+						logger.red('No posts found.');
+					}
+					logger.unindent();
+					return _posts;
+				});
 			} else {
 				var tags = item.toLowerCase().split(' ');
-				logger.log(`[${idx+1}/${todo.length}] Searching for all posts with tags: ${item}`);
+				logger.log(`[${idx+1}/${todo.length}] Searching for all posts with tag(s): ${item}`);
 				
 				return this.searchAll(tags)
 				.catch(e => {

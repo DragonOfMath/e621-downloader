@@ -2,7 +2,7 @@
   "name": "e621-downloader",
   "description": "Node.js bulk-file downloader for e621.net",
   "main": "index.js",
-  "version": "1.01",
+  "version": "1.02",
   "dependencies": {
     "request": "^2.83.0"
   }

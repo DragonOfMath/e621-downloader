@@ -12,7 +12,7 @@ class RequestPromise {
 			return path.resolve(APP_DIR, filename);
 		}
 	}
-	static fetch(url, options = {}) {
+	static get(url, options = {}) {
 		options.url = options.url || url;
 		if (options.parameters) {
 			options.url += '?' + Object.keys(options.parameters).map(param => {
