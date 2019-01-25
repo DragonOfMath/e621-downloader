@@ -92,7 +92,7 @@ class E621 {
 					logger.unindent();
 					return post;
 				});
-			} else if (POOL_REGEX) {
+			} else if (POOL_REGEX.test(item)) {
 				var id = item.match(ID_REGEX)[1];
 				logger.log(`[${idx+1}/${todo.length}] Fetching posts in pool: ${id}`);
 				
